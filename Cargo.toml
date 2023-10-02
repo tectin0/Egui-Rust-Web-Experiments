@@ -1,0 +1,21 @@
+[package]
+name = "egui_rust_web_experiments"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "egui_rust_web_experiments_lib"
+crate-type = ["cdylib"]
+
+[dependencies]
+eframe = {version="0.23.0", features = ["wgpu", "glow", "serde", "web_screen_reader"]}
+egui = {version="0.23.0", features = ["callstack", "extra_debug_asserts", "log"]}
+chrono = {version="0.4.19", default-features = false, features=["js-sys", "wasmbind"]}
+log = "0.4.20"
+ehttp = "0.3.1"
+wasm-bindgen = "0.2.87"
+wasm-bindgen-futures = "0.4.37"
+web-sys = "0.3.64"
+bytemuck = "1.14.0"
+egui_extras = "0.23.0"
+image = "0.24.7"

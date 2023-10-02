@@ -1,0 +1,27 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "cargo build release",
+      "type": "shell",
+      "command": "$env:RUSTFLAGS='--cfg=web_sys_unstable_apis'; cargo build --release --target wasm32-unknown-unknown"
+    },
+    {
+      "label": "wasm-bindgen",
+      "type": "shell",
+      "command": "wasm-bindgen \".\\target\\wasm32-unknown-unknown\\release\\egui_rust_web_experiments_lib.wasm\" --out-dir wasm --no-modules --no-typescript"
+    },
+    {
+      "label": "basic http server",
+      "type": "shell",
+      "command": "basic-http-server --addr 0.0.0.0:8000 ."
+    },
+    {
+      "label": "update wasm",
+      "type": "shell",
+      "command": "echo updating..",
+      "dependsOn": ["cargo build release", "wasm-bindgen"],
+      "dependsOrder": "sequence"
+    }
+  ]
+}
