@@ -19,3 +19,7 @@ web-sys = "0.3.64"
 bytemuck = "1.14.0"
 egui_extras = "0.23.0"
 image = "0.24.7"
+reqwest = "0.11.22"
+futures = "0.3.28"
+serde_json = "1.0.107"
+serde = {verison="1.0.188", features=["derive"]}

@@ -1,7 +1,10 @@
-<!doctype html>
-<html lang="en-US">
+<!DOCTYPE html>
+<html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <title>hello-wasm example</title>
     <style>
       html {
@@ -94,9 +97,10 @@
     <script>
       delete WebAssembly.instantiateStreaming;
     </script>
-    <script src="./wasm/egui_rust_web_experiments_lib.js"></script>
+    <script src="/wasm/egui_rust_web_experiments_lib.js"></script>
+        
     <script>
-    wasm_bindgen("./wasm/egui_rust_web_experiments_lib_bg.wasm").then(on_wasm_loaded).catch(on_error);
+    wasm_bindgen("/wasm/egui_rust_web_experiments_lib_bg.wasm").then(on_wasm_loaded).catch(on_error);
 
     function on_wasm_loaded() {
       let handle = new wasm_bindgen.WebHandle();

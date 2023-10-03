@@ -4,6 +4,11 @@ use egui::{
     TextureHandle, TextureOptions,
 };
 
+use reqwest::Client as ReqwestClient;
+
+use wasm_bindgen_futures::spawn_local;
+
+use crate::HOST;
 pub struct App {
     is_dark: bool,
     background: TextureHandle,
@@ -12,7 +17,11 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(cc: &CreationContext) -> Self {
+    pub fn new(cc: &CreationContext<'_>) -> Self {
+        spawn_local(async move {
+            send_hello_request().await;
+        });
+
         Self {
             is_dark: true,
             background: cc.egui_ctx.load_texture(
@@ -21,7 +30,7 @@ impl App {
                 TextureOptions::default(),
             ),
             lines: Default::default(),
-            stroke: Stroke::new(1.0, Color32::WHITE),
+            stroke: Stroke::new(5.0, Color32::WHITE),
         }
     }
 }
@@ -72,6 +81,12 @@ impl eframe::App for App {
             } else if !current_line.is_empty() {
                 self.lines.push(vec![]);
                 response.mark_changed();
+
+                let lines = self.lines.clone();
+
+                spawn_local(async move {
+                    send_lines_request(lines).await;
+                });
             }
 
             let shapes = self
@@ -94,4 +109,48 @@ fn load_image_from_memory(image_data: &[u8]) -> Result<ColorImage, image::ImageE
     let image_buffer = image.to_rgba8();
     let pixels = image_buffer.as_flat_samples();
     Ok(ColorImage::from_rgba_unmultiplied(size, pixels.as_slice()))
+}
+
+async fn send_hello_request() {
+    let client = ReqwestClient::new();
+
+    let body = r#"{ "hello": "world" }\r\n"#;
+
+    client
+        .post(HOST.to_string() + "/hello")
+        .header("Content-Type", "application/json")
+        .body(body)
+        .send()
+        .await;
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+struct SendLines {
+    lines: Vec<f32>,
+    num_lines: usize,
+}
+
+async fn send_lines_request(lines: Vec<Vec<Pos2>>) {
+    let send_lines = SendLines {
+        lines: lines
+            .iter()
+            .flat_map(|line| {
+                line.iter()
+                    .flat_map(|pos| vec![pos.x, pos.y])
+                    .collect::<Vec<f32>>()
+            })
+            .collect(),
+        num_lines: lines.len(),
+    };
+
+    let client = ReqwestClient::new();
+
+    let body = serde_json::to_string(&send_lines).unwrap() + "\r\n\r\n";
+
+    client
+        .post(HOST.to_string() + "/send_lines")
+        .header("Content-Type", "application/json")
+        .body(body)
+        .send()
+        .await;
 }
