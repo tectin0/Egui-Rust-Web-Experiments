@@ -97,10 +97,10 @@
     <script>
       delete WebAssembly.instantiateStreaming;
     </script>
-    <script src="/wasm/egui_rust_web_experiments_lib.js"></script>
+    <script src="/wasm/frontend.js"></script>
         
     <script>
-    wasm_bindgen("/wasm/egui_rust_web_experiments_lib_bg.wasm").then(on_wasm_loaded).catch(on_error);
+    wasm_bindgen("/wasm/frontend_bg.wasm").then(on_wasm_loaded).catch(on_error);
 
     function on_wasm_loaded() {
       let handle = new wasm_bindgen.WebHandle();

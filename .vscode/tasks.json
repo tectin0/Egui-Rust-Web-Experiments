@@ -4,12 +4,28 @@
     {
       "label": "cargo build release frontend",
       "type": "shell",
-      "command": "$env:RUSTFLAGS='--cfg=web_sys_unstable_apis'; cargo build --release --target wasm32-unknown-unknown --manifest-path frontend/Cargo.toml"
+      "command": "$env:RUSTFLAGS='--cfg=web_sys_unstable_apis'; cargo build --release --target wasm32-unknown-unknown --manifest-path frontend/Cargo.toml",
+      "presentation": {
+        "echo": true,
+        "reveal": "silent",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      }
     },
     {
       "label": "wasm-bindgen",
       "type": "shell",
-      "command": "wasm-bindgen \".\\frontend\\target\\wasm32-unknown-unknown\\release\\egui_rust_web_experiments_lib.wasm\" --out-dir frontend/wasm --no-modules --no-typescript"
+      "command": "wasm-bindgen \".\\target\\wasm32-unknown-unknown\\release\\frontend.wasm\" --out-dir frontend/wasm --no-modules --no-typescript",
+      "presentation": {
+        "echo": true,
+        "reveal": "silent",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      }
     },
     {
       "label": "basic http server",
@@ -21,7 +37,15 @@
       "type": "shell",
       "command": "echo updating..",
       "dependsOn": ["cargo build release frontend", "wasm-bindgen"],
-      "dependsOrder": "sequence"
+      "dependsOrder": "sequence",
+      "presentation": {
+        "echo": true,
+        "reveal": "silent",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      }
     },
     {
       "label": "cargo run release backend",
