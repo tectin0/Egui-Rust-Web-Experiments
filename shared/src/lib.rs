@@ -3,6 +3,8 @@ use std::ops::Deref;
 use egui::Pos2;
 use serde::{Deserialize, Serialize};
 
+pub const HOST: &str = "127.0.0.1:8439";
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct SPos2(pub Pos2);
 

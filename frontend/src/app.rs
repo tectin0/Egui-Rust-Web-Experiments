@@ -14,7 +14,7 @@ use shared::SendLines;
 
 use anyhow::Result;
 
-use crate::HOST;
+use shared::HOST;
 
 use async_recursion::async_recursion;
 
@@ -197,8 +197,10 @@ async fn send_hello_request() -> Result<()> {
 
     let body = r#"{ "hello": "world" }\r\n"#;
 
+
+
     match client
-        .post(HOST.to_string() + "/hello")
+        .post("http://".to_string() + HOST + "/hello")
         .header("Content-Type", "application/json")
         .body(body)
         .send()
@@ -215,7 +217,7 @@ async fn send_lines_request(send_lines: SendLines) -> Result<()> {
     let body = serde_json::to_string(&send_lines).unwrap() + "\r\n\r\n";
 
     match client
-        .post(HOST.to_string() + "/send_lines")
+        .post("http://".to_string() + HOST + "/send_lines")
         .header("Content-Type", "application/json")
         .body(body)
         .send()
@@ -231,7 +233,7 @@ async fn get_lines_request() -> Result<SendLines> {
     let client = ReqwestClient::new();
 
     let response = client
-        .get(HOST.to_string() + "/get_lines")
+        .get("http://".to_string() + HOST + "/get_lines")
         .send()
         .await
         .unwrap();

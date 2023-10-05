@@ -6,6 +6,10 @@ use std::{
 
 use anyhow::{Context, Result};
 
+use http::{
+    header::{self, ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_ORIGIN},
+    HeaderValue,
+};
 use shared::SendLines;
 
 struct State {
@@ -28,7 +32,7 @@ fn main() {
 
     let mut state = State::new();
 
-    let listener = TcpListener::bind("127.0.0.1:8000").unwrap();
+    let listener = TcpListener::bind("0.0.0.0:8439").unwrap();
 
     for stream in listener.incoming() {
         let stream = stream.unwrap();
@@ -72,11 +76,9 @@ fn handle_connection(mut stream: std::net::TcpStream, state: &mut State) -> Resu
     let request_line = http_request_iter.next().unwrap();
     let host = http_request_iter.next().unwrap();
 
-    if &request_line[0..5] == "POST " {
-        // content = buf_reader_lines.next().unwrap().unwrap();
-    }
+    let peer = stream.peer_addr().unwrap().to_string();
 
-    println!("Request: {:?}", request_line);
+    println!("Request by {}: {:?}", peer, request_line);
 
     let mut status_line = None;
     let mut filename = None;
@@ -143,9 +145,24 @@ fn handle_connection(mut stream: std::net::TcpStream, state: &mut State) -> Resu
 
     let length = contents.len();
 
-    let response = format!(
-        "{status_line}\r\nContent-Length: {length}\r\nContent-Type: {content_type}\r\n\r\n"
+    let mut headermap = http::HeaderMap::new();
+
+    headermap.insert(ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"));
+    headermap.insert(
+        ACCESS_CONTROL_ALLOW_HEADERS,
+        HeaderValue::from_static("Origin, X-Requested-With, Content-Type, Accept"),
     );
+    headermap.insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
+    headermap.insert(header::CONTENT_LENGTH, HeaderValue::from(length));
+
+    let response = format!("{}\r\n{}\r\n", status_line, {
+        headermap
+            .iter()
+            .fold(String::new(), |mut acc, (key, value)| {
+                acc.push_str(&format!("{}: {}\r\n", key, value.to_str().unwrap()));
+                acc
+            })
+    });
 
     let mut response = response.into_bytes();
     response.extend(contents);
