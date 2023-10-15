@@ -105,7 +105,7 @@
     function on_wasm_loaded() {
       let handle = new wasm_bindgen.WebHandle();
 
-      handle.start("canvas").then(on_app_started).catch(on_error);
+      handle.start("canvas", "#host").then(on_app_started).catch(on_error);
     }
 
     function on_app_started(handle) {

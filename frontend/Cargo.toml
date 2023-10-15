@@ -10,6 +10,8 @@ default-target = "wasm32-unknown-unknown"
 name = "frontend"
 crate-type = ["cdylib"]
 
+
+
 [dependencies]
 shared ={ path = "../shared" }
 eframe = {version="0.23.0", features = ["wgpu", "glow", "serde", "web_screen_reader"]}

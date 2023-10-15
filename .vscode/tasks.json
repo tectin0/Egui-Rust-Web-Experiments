@@ -17,7 +17,7 @@
     {
       "label": "wasm-bindgen",
       "type": "shell",
-      "command": "wasm-bindgen \".\\target\\wasm32-unknown-unknown\\release\\frontend.wasm\" --out-dir frontend/wasm --no-modules --no-typescript",
+      "command": "wasm-bindgen \".\\target\\wasm32-unknown-unknown\\release\\frontend.wasm\" --out-dir public/wasm --no-modules --no-typescript",
       "presentation": {
         "echo": true,
         "reveal": "silent",

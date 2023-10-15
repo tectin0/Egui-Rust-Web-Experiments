@@ -1,10 +1,13 @@
 use eframe::CreationContext;
+use eframe::Frame;
 use egui::{
     emath, pos2, Color32, ColorImage, Pos2, Rect, Sense, Stroke, TextureHandle, TextureOptions,
 };
 
 use reqwest::Client as ReqwestClient;
 
+use shared::ClientID;
+use shared::Flag;
 use wasm_bindgen_futures::spawn_local;
 
 use std::sync::{Arc, Mutex};
@@ -14,35 +17,43 @@ use shared::SendLines;
 
 use anyhow::Result;
 
-use shared::HOST;
-
 use async_recursion::async_recursion;
 
 pub struct App {
+    client_id: ClientID,
+    host: String,
     is_dark: bool,
     background: TextureHandle,
     send_lines: Arc<Mutex<SendLines>>,
+    current_line_id: Option<usize>,
     get_lines_timer: Option<f64>,
     stroke: Stroke,
 }
 
 impl App {
-    pub fn new(cc: &CreationContext<'_>) -> Self {
+    pub fn new(cc: &CreationContext<'_>, host: String) -> Self {
+        let client_id = ClientID(rand::random::<usize>());
+
+        let host_clone = host.clone();
+
         spawn_local(async move {
-            match send_hello_request().await {
+            match send_hello_request(host_clone, client_id).await {
                 Ok(_) => (),
                 Err(e) => println!("Error: {:?}", e),
             };
         });
 
         Self {
+            client_id,
+            host: host.to_string(),
             is_dark: true,
             background: cc.egui_ctx.load_texture(
                 "background",
-                load_image_from_memory(include_bytes!("..\\example.png")).unwrap(),
+                load_image_from_memory(include_bytes!("../../assets/example.png")).unwrap(),
                 TextureOptions::default(),
             ),
             send_lines: Default::default(),
+            current_line_id: None,
             get_lines_timer: None,
             stroke: Stroke::new(5.0, Color32::WHITE),
         }
@@ -50,17 +61,37 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.toggle_value(&mut self.is_dark, "🌓").changed().then(|| {
-                if self.is_dark {
-                    ui.ctx().set_visuals(egui::Visuals::dark());
-                } else {
-                    ui.ctx().set_visuals(egui::Visuals::light());
+            ui.horizontal(|ui| {
+                ui.toggle_value(&mut self.is_dark, "🌓").changed().then(|| {
+                    if self.is_dark {
+                        ui.ctx().set_visuals(egui::Visuals::dark());
+                    } else {
+                        ui.ctx().set_visuals(egui::Visuals::light());
+                    }
+                });
+
+                egui::stroke_ui(ui, &mut self.stroke, "Stroke");
+
+                let host = self.host.clone();
+
+                if ui.button("Clear").clicked() {
+                    spawn_local(async move {
+                        match send_clear_lines_request(&host).await {
+                            Ok(_) => (),
+                            Err(e) => println!("Error sending clear lines request: {:?}", e),
+                        };
+                    });
+
+                    let mut send_lines = self
+                        .send_lines
+                        .try_lock()
+                        .expect(&format!("Failed to lock send_lines at line {}", line!()));
+
+                    send_lines.lines.clear();
                 }
             });
-
-            egui::stroke_ui(ui, &mut self.stroke, "Stroke");
 
             let canvas_size = ui.available_size_before_wrap();
             let canvas_rect = ui.available_rect_before_wrap();
@@ -74,10 +105,14 @@ impl eframe::App for App {
                 Color32::WHITE,
             );
 
-            let to_screen = emath::RectTransform::from_to(
-                Rect::from_min_size(Pos2::ZERO, response.rect.square_proportions()),
-                response.rect,
+            let background_size = self.background.size();
+            let background_rect = Rect::from_min_size(
+                Pos2::ZERO,
+                emath::vec2(background_size[0] as f32, background_size[1] as f32),
             );
+
+            let to_screen = emath::RectTransform::from_to(background_rect, response.rect);
+
             let from_screen = to_screen.inverse();
 
             let mut send_lines = self
@@ -86,11 +121,24 @@ impl eframe::App for App {
                 .expect(&format!("Failed to lock send_lines at line {}", line!()));
 
             if send_lines.lines.is_empty() {
-                send_lines.lines.push(vec![]);
-                send_lines.line_ids.push(rand::random::<usize>());
+                let current_line_id = rand::random::<usize>();
+                self.current_line_id = Some(current_line_id);
+                send_lines.lines.insert(current_line_id, vec![]);
             }
 
-            let current_line = send_lines.lines.last_mut().unwrap();
+            let current_line = match send_lines.lines.get_mut(match &self.current_line_id {
+                Some(current_line_id) => current_line_id,
+                None => {
+                    log::error!("Failed to get current line id");
+                    return;
+                }
+            }) {
+                Some(current_line) => current_line,
+                None => {
+                    log::error!("Failed to get current line");
+                    return;
+                }
+            };
 
             if let Some(pointer_pos) = response.interact_pointer_pos() {
                 let canvas_pos = from_screen * pointer_pos;
@@ -111,22 +159,25 @@ impl eframe::App for App {
                     unlocked.clone()
                 };
 
+                let host = self.host.clone();
+
                 spawn_local(async move {
-                    match send_lines_request(send_lines).await {
+                    match send_lines_request(&host, send_lines).await {
                         Ok(_) => (),
                         Err(e) => println!("Error: {:?} at Line: {}", e, line!()),
                     };
                 });
 
-                {
-                    let mut send_lines = self
-                        .send_lines
-                        .try_lock()
-                        .expect(&format!("Failed to lock send_lines at line {}", line!()));
+                let mut send_lines = self
+                    .send_lines
+                    .try_lock()
+                    .expect(&format!("Failed to lock send_lines at line {}", line!()));
 
-                    send_lines.lines.push(vec![]);
-                    send_lines.line_ids.push(rand::random::<usize>());
-                }
+                let current_line_id = rand::random::<usize>();
+
+                self.current_line_id = Some(current_line_id);
+
+                send_lines.lines.insert(current_line_id, vec![]);
 
                 response.mark_changed();
             } else {
@@ -144,8 +195,8 @@ impl eframe::App for App {
             let shapes = send_lines
                 .lines
                 .iter()
-                .filter(|line| line.len() >= 2)
-                .map(|line| {
+                .filter(|(line_id, line)| line.len() >= 2)
+                .map(|(line_id, line)| {
                     let points: Vec<Pos2> = line.iter().map(|p| to_screen * **p).collect();
                     egui::Shape::line(points, self.stroke)
                 });
@@ -159,11 +210,13 @@ impl eframe::App for App {
             self.get_lines_timer = Some(seconds_since);
         }
 
-        if seconds_since - self.get_lines_timer.unwrap() > 1.0 {
+        if seconds_since - self.get_lines_timer.unwrap() > 0.5 {
             let send_lines = self.send_lines.clone();
 
+            let host = self.host.clone();
+
             spawn_local(async move {
-                let get_lines = match get_lines_request().await {
+                let get_lines = match get_lines_request(&host).await {
                     Ok(get_lines) => get_lines,
                     Err(e) => {
                         println!("Error: {:?} at Line: {}", e, line!());
@@ -175,11 +228,20 @@ impl eframe::App for App {
                     .try_lock()
                     .expect(&format!("Failed to lock send_lines at line {}", line!()));
 
-                send_lines.merge(get_lines);
+                match get_lines.flag {
+                    Flag::Clear => {
+                        send_lines.lines.clear();
+                    }
+                    Flag::None => {
+                        send_lines.merge(get_lines);
+                    }
+                }
             });
 
             self.get_lines_timer = Some(seconds_since);
         }
+
+        ctx.request_repaint_after(std::time::Duration::from_millis(500));
     }
 }
 
@@ -192,15 +254,13 @@ fn load_image_from_memory(image_data: &[u8]) -> Result<ColorImage, image::ImageE
 }
 
 #[async_recursion(?Send)]
-async fn send_hello_request() -> Result<()> {
+async fn send_hello_request(host: String, client_id: ClientID) -> Result<()> {
     let client = ReqwestClient::new();
 
-    let body = r#"{ "hello": "world" }\r\n"#;
-
-
+    let body = serde_json::to_string(&client_id).unwrap() + "\r\n\r\n";
 
     match client
-        .post("http://".to_string() + HOST + "/hello")
+        .post("http://".to_string() + &host + "/hello")
         .header("Content-Type", "application/json")
         .body(body)
         .send()
@@ -211,13 +271,13 @@ async fn send_hello_request() -> Result<()> {
     }
 }
 #[async_recursion(?Send)]
-async fn send_lines_request(send_lines: SendLines) -> Result<()> {
+async fn send_lines_request(host: &str, send_lines: SendLines) -> Result<()> {
     let client = ReqwestClient::new();
 
     let body = serde_json::to_string(&send_lines).unwrap() + "\r\n\r\n";
 
     match client
-        .post("http://".to_string() + HOST + "/send_lines")
+        .post("http://".to_string() + host + "/send_lines")
         .header("Content-Type", "application/json")
         .body(body)
         .send()
@@ -229,11 +289,11 @@ async fn send_lines_request(send_lines: SendLines) -> Result<()> {
 }
 
 #[async_recursion(?Send)]
-async fn get_lines_request() -> Result<SendLines> {
+async fn get_lines_request(host: &str) -> Result<SendLines> {
     let client = ReqwestClient::new();
 
     let response = client
-        .get("http://".to_string() + HOST + "/get_lines")
+        .get("http://".to_string() + host + "/get_lines")
         .send()
         .await
         .unwrap();
@@ -241,4 +301,22 @@ async fn get_lines_request() -> Result<SendLines> {
     let body = response.text().await.unwrap();
 
     Ok(serde_json::from_str::<SendLines>(&body).unwrap())
+}
+
+#[async_recursion(?Send)]
+async fn send_clear_lines_request(host: &str) -> Result<()> {
+    let client = ReqwestClient::new();
+
+    let body = r#""#;
+
+    match client
+        .post("http://".to_string() + host + "/clear_lines")
+        .header("Content-Type", "application/json")
+        .body(body)
+        .send()
+        .await
+    {
+        Ok(_) => Ok(()),
+        Err(_) => Err(anyhow::anyhow!("Failed to send clear lines request")),
+    }
 }

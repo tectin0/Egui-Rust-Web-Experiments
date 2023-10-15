@@ -1,3 +1,5 @@
+use std::option;
+
 use wasm_bindgen::prelude::*;
 
 use crate::app::App;
@@ -20,18 +22,22 @@ impl WebHandle {
     }
 
     #[wasm_bindgen]
-    pub async fn start(&self, canvas_id: &str) -> Result<(), wasm_bindgen::JsValue> {
+    pub async fn start(&self, canvas_id: &str, host: &str) -> Result<(), wasm_bindgen::JsValue> {
+        let host = host.to_string();
+
+        let options = eframe::WebOptions::default();
+
         self.runner
             .start(
                 canvas_id,
-                eframe::WebOptions::default(),
+                options,
                 Box::new(|cc| {
                     cc.egui_ctx.set_style(egui::Style {
                         visuals: egui::Visuals::dark(),
                         ..Default::default()
                     });
 
-                    Box::new(App::new(cc))
+                    Box::new(App::new(cc, host))
                 }),
             )
             .await

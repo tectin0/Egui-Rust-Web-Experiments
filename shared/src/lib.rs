@@ -1,9 +1,20 @@
-use std::ops::Deref;
+pub mod config;
+
+use std::{collections::HashMap, fmt::Display, ops::Deref};
 
 use egui::Pos2;
 use serde::{Deserialize, Serialize};
 
-pub const HOST: &str = "127.0.0.1:8439";
+use anyhow::Result;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Copy, Eq, Hash)]
+pub struct ClientID(pub usize);
+
+impl Display for ClientID {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SPos2(pub Pos2);
@@ -30,20 +41,50 @@ impl Deref for SPos2 {
     }
 }
 
+#[derive(serde::Deserialize, serde::Serialize, Debug, Clone, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Flag {
+    #[default]
+    None,
+    Clear,
+}
+
 #[derive(serde::Deserialize, serde::Serialize, Debug, Default, Clone)]
 pub struct SendLines {
-    pub lines: Vec<Vec<SPos2>>,
-    pub line_ids: Vec<usize>,
+    pub lines: HashMap<usize, Vec<SPos2>>,
+    pub flag: Flag,
 }
 
 impl SendLines {
     pub fn merge(&mut self, other: Self) {
-        for (i, line_id) in other.line_ids.iter().enumerate() {
-            if !self.line_ids.contains(line_id) {
-                self.line_ids.push(*line_id);
-
-                self.lines.push(other.lines[i].clone());
+        for (line_id, line) in other.lines.iter() {
+            match self.lines.get_mut(&line_id) {
+                Some(_) => (),
+                None => {
+                    self.lines.insert(*line_id, line.clone());
+                }
             }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Peer(pub String);
+
+impl Peer {
+    pub fn ip(&self) -> Result<&str> {
+        match self.0.split_once(":") {
+            Some((ip, _)) => Ok(ip),
+            None => Err(anyhow::anyhow!("Failed to get ip from peer")),
+        }
+    }
+}
+
+impl Display for Peer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.0.split_once(":") {
+            Some((ip, port)) => write!(f, "{}:{}", ip, port),
+            None => Err(std::fmt::Error),
         }
     }
 }
