@@ -58,7 +58,7 @@ pub struct SendLines {
 impl SendLines {
     pub fn merge(&mut self, other: Self) {
         for (line_id, line) in other.lines.iter() {
-            match self.lines.get_mut(&line_id) {
+            match self.lines.get_mut(line_id) {
                 Some(_) => (),
                 None => {
                     self.lines.insert(*line_id, line.clone());
@@ -73,7 +73,7 @@ pub struct Peer(pub String);
 
 impl Peer {
     pub fn ip(&self) -> Result<&str> {
-        match self.0.split_once(":") {
+        match self.0.split_once(':') {
             Some((ip, _)) => Ok(ip),
             None => Err(anyhow::anyhow!("Failed to get ip from peer")),
         }
@@ -82,7 +82,7 @@ impl Peer {
 
 impl Display for Peer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.0.split_once(":") {
+        match self.0.split_once(':') {
             Some((ip, port)) => write!(f, "{}:{}", ip, port),
             None => Err(std::fmt::Error),
         }

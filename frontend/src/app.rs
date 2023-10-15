@@ -1,5 +1,5 @@
 use eframe::CreationContext;
-use eframe::Frame;
+
 use egui::{
     emath, pos2, Color32, ColorImage, Pos2, Rect, Sense, Stroke, TextureHandle, TextureOptions,
 };
@@ -61,7 +61,7 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.toggle_value(&mut self.is_dark, "🌓").changed().then(|| {
@@ -195,8 +195,8 @@ impl eframe::App for App {
             let shapes = send_lines
                 .lines
                 .iter()
-                .filter(|(line_id, line)| line.len() >= 2)
-                .map(|(line_id, line)| {
+                .filter(|(_line_id, line)| line.len() >= 2)
+                .map(|(_line_id, line)| {
                     let points: Vec<Pos2> = line.iter().map(|p| to_screen * **p).collect();
                     egui::Shape::line(points, self.stroke)
                 });

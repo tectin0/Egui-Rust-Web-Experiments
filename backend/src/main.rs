@@ -123,10 +123,7 @@ fn handle_connection(
 
     let peer = Peer(stream.peer_addr().unwrap().to_string());
 
-    let client_id: Option<ClientID> = match state.clients.get(peer.ip()?) {
-        Some(client) => Some(client.id),
-        None => None,
-    };
+    let client_id: Option<ClientID> = state.clients.get(peer.ip()?).map(|client| client.id);
 
     trace!(
         "Request by {} (ID: {}): {:?}",
@@ -180,7 +177,7 @@ fn handle_connection(
                 }
             };
 
-            let client_id = serde_json::from_str::<ClientID>(&content)
+            let client_id = serde_json::from_str::<ClientID>(content)
                 .context(format!("Failed to parse client id - content: {}", content))?;
 
             info!("Client {} connected from {}", client_id.0, peer.ip()?);
@@ -200,7 +197,7 @@ fn handle_connection(
                 }
             };
 
-            let lines = serde_json::from_str::<SendLines>(&content).unwrap();
+            let lines = serde_json::from_str::<SendLines>(content).unwrap();
 
             debug!("Received lines: {:?}", lines.lines.keys());
             debug!("Current lines: {:?}", state.lines.lines.keys());
@@ -236,9 +233,7 @@ fn handle_connection(
 
             state.clear_sync = Some(
                 state
-                    .clients
-                    .iter()
-                    .map(|(_, client)| (client.id, false))
+                    .clients.values().map(|client| (client.id, false))
                     .collect(),
             );
         }
@@ -266,7 +261,7 @@ fn handle_connection(
             string.into_bytes()
         }
         "text/javascript" => fs::read_to_string(filename)?.into_bytes(),
-        "application/wasm" => fs::read(filename)?.into(),
+        "application/wasm" => fs::read(filename)?,
         _ => Vec::<u8>::new(),
     };
 
