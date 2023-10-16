@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs,
     io::{BufRead, BufReader, Write},
     net::TcpListener,
@@ -14,7 +14,7 @@ use http::{
 use log::{debug, info, trace};
 use shared::{
     config::{Config, CONFIG},
-    ClientID, Flag, Peer, SendLines,
+    ChangedLines, ClientID, Flag, Lines, Message, Peer,
 };
 use simple_logger::SimpleLogger;
 
@@ -23,25 +23,24 @@ struct Client {
 }
 
 struct State {
-    lines: SendLines,
+    lines: Lines,
     clients: HashMap<String, Client>,
-    clear_sync: Option<HashMap<ClientID, bool>>,
+    clear_sync: Option<HashSet<ClientID>>,
+    changed_lines_sync: HashMap<ClientID, ChangedLines>,
 }
 
 impl State {
     fn new() -> Self {
         Self {
-            lines: SendLines {
-                lines: HashMap::new(),
-                flag: Flag::None,
-            },
+            lines: Lines::default(),
             clients: HashMap::new(),
             clear_sync: None,
+            changed_lines_sync: HashMap::new(),
         }
     }
 }
 
-const VALID_POST_PATHS: [&str; 2] = ["/send_lines", "/hello"];
+const VALID_POST_PATHS: [&str; 3] = ["/send_lines", "/delete_lines", "/hello"];
 
 fn main() {
     let config = CONFIG.read().unwrap();
@@ -123,7 +122,10 @@ fn handle_connection(
 
     let peer = Peer(stream.peer_addr().unwrap().to_string());
 
-    let client_id: Option<ClientID> = state.clients.get(peer.ip()?).map(|client| client.id);
+    let client_id: Option<ClientID> = match state.clients.get(peer.ip()?) {
+        Some(client) => Some(client.id),
+        None => None,
+    };
 
     trace!(
         "Request by {} (ID: {}): {:?}",
@@ -151,6 +153,7 @@ fn handle_connection(
             };
 
             replace_content.push(["#host".to_string(), host]);
+            replace_content.push(["#title".to_string(), config.website.title.clone()]);
 
             status_line = Some("HTTP/1.1 200 OK");
             filename = Some("public/index.html");
@@ -166,76 +169,126 @@ fn handle_connection(
             filename = Some("public/wasm/frontend_bg.wasm");
             content_type = Some("application/wasm");
         }
-        "POST /hello HTTP/1.1" => {
-            let content = match content {
-                Some(content) => content,
+        "GET /hello HTTP/1.1" => {
+            let client_id = match state.clients.get(peer.ip()?) {
+                Some(client) => client.id,
                 None => {
-                    return Err(anyhow::anyhow!(
-                        "Did not get any content from request: {:?}",
-                        http_request
-                    ))?
+                    let client_id = ClientID::new();
+                    state
+                        .clients
+                        .insert(peer.ip()?.to_string(), Client { id: client_id });
+
+                    state
+                        .changed_lines_sync
+                        .insert(client_id, ChangedLines::default());
+
+                    client_id
                 }
             };
-
-            let client_id = serde_json::from_str::<ClientID>(content)
-                .context(format!("Failed to parse client id - content: {}", content))?;
 
             info!("Client {} connected from {}", client_id.0, peer.ip()?);
 
-            state
-                .clients
-                .insert(peer.ip()?.to_string(), Client { id: client_id });
+            debug!("Current clients: {:?}", state.clients.keys());
+            debug!("Current changed lines: {:?}", state.changed_lines_sync);
+
+            let response = serde_json::to_string(&client_id).unwrap();
+
+            stream
+                .write_all(response.as_bytes())
+                .context("Failed to write response")?;
         }
         "POST /send_lines HTTP/1.1" => {
-            let content = match content {
-                Some(content) => content,
-                None => {
-                    return Err(anyhow::anyhow!(
-                        "Did not get any content from request: {:?}",
-                        http_request
-                    ))?
-                }
-            };
+            let content = unwrap_content(content, &http_request)?;
 
-            let lines = serde_json::from_str::<SendLines>(content).unwrap();
+            let message = serde_json::from_str::<Message>(&content).unwrap();
 
-            debug!("Received lines: {:?}", lines.lines.keys());
-            debug!("Current lines: {:?}", state.lines.lines.keys());
+            let other_lines = message.lines;
+            let changed_lines = message.changed_lines;
 
-            state.lines.merge(lines);
+            debug!("Received lines: {:?}", other_lines.keys());
+            debug!("Current lines: {:?}", state.lines.keys());
+
+            state.lines.merge(other_lines, &changed_lines);
+
+            if changed_lines.is_some() {
+                let changed_lines = changed_lines.unwrap().0;
+
+                let changed_lines_sync = &mut state.changed_lines_sync;
+
+                changed_lines_sync
+                    .iter_mut()
+                    .for_each(|(_, changed_lines_l)| {
+                        // if client_id_l != &client_id {
+                        //     changed_lines_l.0.extend(changed_lines.iter());
+                        // } // TODO: check if can be ommited
+
+                        changed_lines_l.0.extend(changed_lines.iter());
+                    });
+            }
+        }
+        "POST /delete_lines HTTP/1.1" => {
+            let content = unwrap_content(content, &http_request)?;
+
+            let changed_lines = serde_json::from_str::<ChangedLines>(&content).context(format!(
+                "Failed to parse changed lines - content: {}",
+                content
+            ))?;
+
+            for line_id in changed_lines.0.iter() {
+                debug!("Deleting line: {}", line_id);
+                state.lines.0.remove(line_id);
+                debug!("Current lines: {:?}", state.lines.0.keys());
+            }
+
+            let changed_lines_sync = &mut state.changed_lines_sync;
+
+            state.clients.iter().for_each(|client| {
+                let client_id = client.1.id;
+
+                changed_lines_sync
+                    .entry(client_id)
+                    .or_insert_with(ChangedLines::default)
+                    .0
+                    .extend(changed_lines.0.iter());
+            });
+
+            debug!("Changed lines: {:?}", changed_lines_sync);
         }
         "GET /get_lines HTTP/1.1" => {
-            if state.clear_sync.is_some() {
-                let clear_sync = state.clear_sync.as_mut().unwrap();
-
-                clear_sync.remove(&client_id.unwrap());
-
-                if clear_sync.is_empty() {
-                    state.lines.flag = Flag::None;
-
-                    state.clear_sync = None;
-                }
-            }
+            let client_id = unwrap_client_id(client_id, &mut stream, peer)?;
 
             let lines = state.lines.clone();
 
-            let response = serde_json::to_string(&lines).unwrap() + "\r\n\r\n";
+            let changed_lines = state.changed_lines_sync.remove(&client_id);
+
+            let mut flag: Option<Flag> = None;
+
+            if state.clear_sync.is_some() {
+                let clear_sync = state.clear_sync.as_mut().unwrap();
+
+                if clear_sync.remove(&client_id) {
+                    flag = Some(Flag::Clear);
+                }
+            }
+
+            let message = Message {
+                lines: lines.clone(),
+                changed_lines,
+                flag,
+            };
+
+            let response = serde_json::to_string(&message).unwrap() + "\r\n\r\n";
 
             stream
                 .write_all(response.as_bytes())
                 .context("Failed to write response")?;
         }
         "POST /clear_lines HTTP/1.1" => {
-            state.lines = SendLines {
-                lines: HashMap::new(),
-                flag: Flag::Clear,
-            };
+            state.lines.clear();
 
-            state.clear_sync = Some(
-                state
-                    .clients.values().map(|client| (client.id, false))
-                    .collect(),
-            );
+            state.changed_lines_sync = HashMap::new();
+
+            state.clear_sync = Some(state.clients.iter().map(|(_, client)| client.id).collect());
         }
         _ => {
             status_line = Some("HTTP/1.1 404 NOT FOUND");
@@ -261,21 +314,13 @@ fn handle_connection(
             string.into_bytes()
         }
         "text/javascript" => fs::read_to_string(filename)?.into_bytes(),
-        "application/wasm" => fs::read(filename)?,
+        "application/wasm" => fs::read(filename)?.into(),
         _ => Vec::<u8>::new(),
     };
 
     let length = contents.len();
 
-    let mut headermap = http::HeaderMap::new();
-
-    headermap.insert(ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"));
-    headermap.insert(
-        ACCESS_CONTROL_ALLOW_HEADERS,
-        HeaderValue::from_static("Origin, X-Requested-With, Content-Type, Accept"),
-    );
-    headermap.insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
-    headermap.insert(header::CONTENT_LENGTH, HeaderValue::from(length));
+    let headermap = prepare_headermap(content_type, length);
 
     let response = format!("{}\r\n{}\r\n", status_line, {
         headermap
@@ -292,4 +337,54 @@ fn handle_connection(
     stream.write_all(response.as_slice()).unwrap();
 
     Ok(())
+}
+
+fn unwrap_content<'a>(
+    content: Option<&'a String>,
+    http_request: &[String],
+) -> Result<&'a String, anyhow::Error> {
+    let content = match content {
+        Some(content) => content,
+        None => {
+            return Err(anyhow::anyhow!(
+                "Did not get any content from request: {:?}",
+                http_request
+            ))?
+        }
+    };
+    Ok(content)
+}
+
+fn unwrap_client_id(
+    client_id: Option<ClientID>,
+    stream: &mut std::net::TcpStream,
+    peer: Peer,
+) -> Result<ClientID, anyhow::Error> {
+    let client_id = match client_id {
+        Some(client_id) => client_id,
+        None => {
+            let status_line = "HTTP/1.1 412 PRECONDITION FAILED";
+
+            stream.write_all(format!("{}\r\n", status_line).as_bytes())?;
+
+            return Err(anyhow::anyhow!(
+                "Client ID not found for peer: {}",
+                peer.ip()?
+            ))?;
+        }
+    };
+    Ok(client_id)
+}
+
+fn prepare_headermap(content_type: &'static str, length: usize) -> http::HeaderMap {
+    let mut headermap = http::HeaderMap::new();
+
+    headermap.insert(ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"));
+    headermap.insert(
+        ACCESS_CONTROL_ALLOW_HEADERS,
+        HeaderValue::from_static("Origin, X-Requested-With, Content-Type, Accept"),
+    );
+    headermap.insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
+    headermap.insert(header::CONTENT_LENGTH, HeaderValue::from(length));
+    headermap
 }

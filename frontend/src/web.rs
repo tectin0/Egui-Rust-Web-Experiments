@@ -1,6 +1,6 @@
-
-
 use wasm_bindgen::prelude::*;
+
+use anyhow::Result;
 
 use crate::app::App;
 
@@ -22,8 +22,14 @@ impl WebHandle {
     }
 
     #[wasm_bindgen]
-    pub async fn start(&self, canvas_id: &str, host: &str) -> Result<(), wasm_bindgen::JsValue> {
+    pub async fn start(
+        &self,
+        canvas_id: &str,
+        host: &str,
+        client_id: &str,
+    ) -> Result<(), wasm_bindgen::JsValue> {
         let host = host.to_string();
+        let client_id = client_id.to_string();
 
         let options = eframe::WebOptions::default();
 
@@ -37,7 +43,7 @@ impl WebHandle {
                         ..Default::default()
                     });
 
-                    Box::new(App::new(cc, host))
+                    Box::new(App::new(cc, host, client_id))
                 }),
             )
             .await

@@ -5,7 +5,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <title>hello-wasm example</title>
+    <title>#title</title>
     <style>
       html {
           /* Remove touch delay: */
@@ -105,7 +105,9 @@
     function on_wasm_loaded() {
       let handle = new wasm_bindgen.WebHandle();
 
-      handle.start("canvas", "#host").then(on_app_started).catch(on_error);
+      fetch("/hello").then((response) => response.json()).then((client_id) => {
+        handle.start("canvas", "#host", String(client_id)).then(on_app_started).catch(on_error);
+      })
     }
 
     function on_app_started(handle) {

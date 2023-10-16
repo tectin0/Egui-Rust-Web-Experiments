@@ -8,6 +8,19 @@ use indoc::indoc;
 use lazy_static::lazy_static;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Website {
+    pub title: String,
+}
+
+impl Default for Website {
+    fn default() -> Self {
+        Self {
+            title: "Synced Drawing".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Host {
     pub ip: String,
     pub port: u16,
@@ -25,6 +38,7 @@ impl Default for Host {
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
 pub struct Config {
     pub host: Host,
+    pub website: Website,
 }
 
 impl Config {
