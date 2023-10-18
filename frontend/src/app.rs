@@ -160,6 +160,12 @@ impl eframe::App for App {
                     });
 
                 ui.label(format!("Zoom {:.2}", self.zoom));
+                ui.button("➖").clicked().then(|| {
+                    self.zoom = (self.zoom + 0.05).clamp(-2.0, 2.0);
+                });
+                ui.button("➕").clicked().then(|| {
+                    self.zoom = (self.zoom - 0.05).clamp(-2.0, 2.0);
+                });
             });
 
             let original_background_size = self
