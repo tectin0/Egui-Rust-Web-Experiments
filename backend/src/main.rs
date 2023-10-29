@@ -193,9 +193,35 @@ fn handle_connection(
 
             let response = serde_json::to_string(&client_id).unwrap();
 
-            stream
-                .write_all(response.as_bytes())
-                .context("Failed to write response")?;
+            // TODO: extract to function
+
+            status_line = Some("HTTP/1.1 200 OK");
+            content_type = Some("text/html");
+
+            let status_line = status_line.unwrap();
+            let content_type = content_type.unwrap();
+
+            let length = response.len();
+
+            let headermap = prepare_headermap(content_type, length);
+
+            let response = format!(
+                "{}\r\n{}\r\n{}\r\n\r\n",
+                status_line,
+                {
+                    headermap
+                        .iter()
+                        .fold(String::new(), |mut acc, (key, value)| {
+                            acc.push_str(&format!("{}: {}\r\n", key, value.to_str().unwrap()));
+                            acc
+                        })
+                },
+                response
+            );
+
+            let response = response.into_bytes();
+
+            stream.write_all(response.as_slice()).unwrap();
         }
         "POST /send_lines HTTP/1.1" => {
             let content = unwrap_content(content, &http_request)?;
@@ -279,9 +305,35 @@ fn handle_connection(
 
             let response = serde_json::to_string(&message).unwrap() + "\r\n\r\n";
 
-            stream
-                .write_all(response.as_bytes())
-                .context("Failed to write response")?;
+            // TODO: extract to function
+
+            status_line = Some("HTTP/1.1 200 OK");
+            content_type = Some("text/html");
+
+            let status_line = status_line.unwrap();
+            let content_type = content_type.unwrap();
+
+            let length = response.len();
+
+            let headermap = prepare_headermap(content_type, length);
+
+            let response = format!(
+                "{}\r\n{}\r\n{}\r\n\r\n",
+                status_line,
+                {
+                    headermap
+                        .iter()
+                        .fold(String::new(), |mut acc, (key, value)| {
+                            acc.push_str(&format!("{}: {}\r\n", key, value.to_str().unwrap()));
+                            acc
+                        })
+                },
+                response
+            );
+
+            let response = response.into_bytes();
+
+            stream.write_all(response.as_slice()).unwrap();
         }
         "POST /clear_lines HTTP/1.1" => {
             state.lines.clear();
